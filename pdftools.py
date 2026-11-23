@@ -283,7 +283,7 @@ def resolucion_efectiva(archivo):
     """{número de objeto: ppp}, según el tamaño mayor con que se dibuja cada imagen."""
     ppp = {}
     doc = pymupdf.open(archivo)
-    for page in doc:
+    for page in tqdm(doc, desc="Midiendo resolución", unit="pág"):
         for info in page.get_image_info(xrefs=True):
             xref = info["xref"]
             if not xref:
@@ -426,6 +426,33 @@ def _dibujos_de_imagen(page):
     return ops, res
 
 
+def _ppp_de_dibujos(ops, dibujos):
+    """Resolución (ppp) de cada imagen dibujada, siguiendo las transformaciones
+    (q / Q / cm) del contenido de la página, sin decodificar las imágenes."""
+    ctm = [1, 0, 0, 1, 0, 0]
+    pila, en_indice = [], {}
+    for i, (operandos, op) in enumerate(ops):
+        o = str(op)
+        if o == "q":
+            pila.append(ctm)
+        elif o == "Q" and pila:
+            ctm = pila.pop()
+        elif o == "cm":
+            a, b, c, d, e, f = [float(x) for x in operandos]
+            A, B, C, D, E, F = ctm
+            ctm = [a * A + b * C, a * B + b * D, c * A + d * C, c * B + d * D,
+                   e * A + f * C + E, e * B + f * D + F]
+        elif o == "Do":
+            en_indice[i] = ctm
+    res = {}
+    for i, _, obj in dibujos:
+        a, b, c, d = en_indice.get(i, [1, 0, 0, 1])[:4]
+        ancho_pt, alto_pt = math.hypot(a, b), math.hypot(c, d)
+        if ancho_pt >= 1 and alto_pt >= 1:
+            res[obj.objgen[0]] = min(int(obj.Width) / (ancho_pt / 72), int(obj.Height) / (alto_pt / 72))
+    return res
+
+
 def _capas_de_fondo(page):
     """En una página en capas, las imágenes de fondo son las opacas dibujadas
     antes de la primera imagen con máscara (/SMask o /ImageMask)."""
@@ -441,7 +468,6 @@ def _capas_de_fondo(page):
 
 def fondo(entrada, salida, ppp=100, quitar=False, razon=40):
     pdf = pikepdf.open(entrada)
-    tmp_ppp = resolucion_efectiva(entrada) if not quitar else {}
     tratadas = 0
     hechos = set()
     for page in tqdm(pdf.pages, desc="Quitando fondo" if quitar else "Reduciendo fondo", unit="pág"):
@@ -454,12 +480,13 @@ def fondo(entrada, salida, ppp=100, quitar=False, razon=40):
             ops = [x for k, x in enumerate(ops) if k not in quitar_idx]
             page.obj.Contents = pdf.make_stream(pikepdf.unparse_content_stream(ops))
             continue
+        medidas = _ppp_de_dibujos(ops, fondos)
         for _, _, o in fondos:
             num = o.objgen[0]
-            if num in hechos or num not in tmp_ppp:
+            if num in hechos or num not in medidas:
                 continue
             hechos.add(num)
-            actual = tmp_ppp[num]
+            actual = medidas[num]
             if actual <= ppp * 1.1:
                 continue
             im = PdfImage(o).as_pil_image()
