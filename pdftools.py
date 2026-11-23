@@ -209,24 +209,41 @@ def cortar(entrada, salida, corte=0.5, derecha_a_izquierda=False):
 #  3) OCR
 # =====================================================================
 
-def _preparar_tesseract():
-    """Busca Tesseract en el PATH o en las carpetas donde lo deja el instalador de Windows."""
-    if shutil.which("tesseract"):
-        return
-    candidatos = [os.path.join(os.environ.get(v, ""), "Tesseract-OCR")
-                  for v in ("ProgramFiles", "ProgramFiles(x86)", "LOCALAPPDATA")]
-    candidatos += [os.path.join(os.path.dirname(os.path.abspath(sys.argv[0])), "Tesseract-OCR")]
-    for c in candidatos:
+def _buscar_tesseract():
+    """Devuelve (carpeta, origen): primero el Tesseract incluido junto a pdftools,
+    luego el del PATH, luego el instalado en Windows. (None, None) si no hay."""
+    base = [os.path.dirname(os.path.abspath(sys.argv[0])), os.path.dirname(sys.executable)]
+    for b in base:
+        for nombre in ("tesseract.exe", "tesseract"):
+            if os.path.isfile(os.path.join(b, "Tesseract-OCR", nombre)):
+                return os.path.join(b, "Tesseract-OCR"), "incluido"
+    ruta = shutil.which("tesseract")
+    if ruta:
+        return os.path.dirname(ruta), "sistema"
+    for v in ("ProgramFiles", "ProgramFiles(x86)", "LOCALAPPDATA"):
+        c = os.path.join(os.environ.get(v, ""), "Tesseract-OCR")
         if os.path.isfile(os.path.join(c, "tesseract.exe")):
-            os.environ["PATH"] = c + os.pathsep + os.environ.get("PATH", "")
-            return
-    raise SystemExit("No se encontró Tesseract. Instálalo (ver README) o agrégalo al PATH.")
+            return c, "sistema"
+    return None, None
+
+
+def _preparar_tesseract():
+    carpeta, origen = _buscar_tesseract()
+    if carpeta is None:
+        raise SystemExit("No se encontró Tesseract (necesario para el OCR).")
+    os.environ["PATH"] = carpeta + os.pathsep + os.environ.get("PATH", "")
+    if origen == "incluido":
+        os.environ["TESSDATA_PREFIX"] = os.path.join(carpeta, "tessdata")
+    return origen
 
 
 def idiomas_disponibles():
     try:
         r = subprocess.run(["tesseract", "--list-langs"], capture_output=True, text=True)
-        return set(r.stdout.split()[1:]) if r.returncode == 0 else set()
+        if r.returncode != 0:
+            return set()
+        # la primera línea es un encabezado ("List of available languages ...")
+        return {l.strip() for l in r.stdout.splitlines()[1:] if l.strip() and l.strip() != "osd"}
     except OSError:
         return set()
 
@@ -578,8 +595,7 @@ def main():
             pass
     ap = argparse.ArgumentParser(prog="pdftools", description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--version", action="version",
-                    version=f"pdftools {VERSION} (jbig2: {'sí' if JBIG2 else 'no encontrado'})")
+    ap.add_argument("--version", action="store_true", help="mostrar versión y componentes")
     sub = ap.add_subparsers(dest="comando", required=True, metavar="comando")
 
     def comun(p, sufijo):
@@ -626,6 +642,16 @@ def main():
     p.add_argument("--umbral", type=int, default=None,
                    help="modo bn: umbral 0-255 (por defecto automático; más bajo = letras más finas)")
 
+    if "--version" in sys.argv[1:2]:
+        print(f"pdftools {VERSION}")
+        print(f"  jbig2:     {'sí' if JBIG2 else 'no encontrado'}")
+        carpeta, origen = _buscar_tesseract()
+        if carpeta:
+            _preparar_tesseract()
+            print(f"  tesseract: {origen} (idiomas: {', '.join(sorted(idiomas_disponibles())) or '?'})")
+        else:
+            print("  tesseract: no encontrado (el comando ocr no funcionará)")
+        return
     a = ap.parse_args()
     if not os.path.isfile(a.entrada):
         raise SystemExit(f"No existe el archivo: {a.entrada}")

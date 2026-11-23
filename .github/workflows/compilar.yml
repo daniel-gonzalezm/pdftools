@@ -7,6 +7,13 @@ on:
     branches: [main]
   workflow_dispatch:
 
+env:
+  # Modelos de idioma de Tesseract que se incluyen:
+  #   tessdata_fast  -> livianos y rápidos (~13 MB los cuatro idiomas)
+  #   tessdata_best  -> más precisos, más lentos y bastante más pesados
+  MODELOS_TESSERACT: tessdata_fast
+  IDIOMAS: eng spa lat rus
+
 jobs:
   windows:
     runs-on: windows-latest
@@ -70,24 +77,37 @@ jobs:
         shell: pwsh
         run: Copy-Item -Recurse jbig2-win dist\pdftools\jbig2
 
-      # ---------- 3) Pruebas ----------
-      - name: Instalar Tesseract (solo para probar el OCR)
+      # ---------- 3) Tesseract (OCR), incluido en la carpeta del programa ----------
+      - name: Instalar Tesseract
         shell: pwsh
-        continue-on-error: true
         run: choco install tesseract -y --no-progress
 
+      - name: Incluir Tesseract en la carpeta del programa
+        shell: pwsh
+        run: |
+          $src = "C:\Program Files\Tesseract-OCR"
+          $dst = "dist\pdftools\Tesseract-OCR"
+          New-Item -ItemType Directory -Force "$dst\tessdata" | Out-Null
+          Copy-Item "$src\tesseract.exe", "$src\*.dll" $dst
+          # configuraciones de tessdata (sin los modelos de idioma que trae el instalador)
+          Get-ChildItem "$src\tessdata" -Exclude *.traineddata | Copy-Item -Destination "$dst\tessdata" -Recurse
+          foreach ($l in $env:IDIOMAS.Split(" ")) {
+            $url = "https://github.com/tesseract-ocr/$env:MODELOS_TESSERACT/raw/main/$l.traineddata"
+            Invoke-WebRequest $url -OutFile "$dst\tessdata\$l.traineddata"
+          }
+          Get-ChildItem "$dst\tessdata" | Format-Table Name, Length
+          "Tamaño de Tesseract incluido: {0:N1} MB" -f ((Get-ChildItem $dst -Recurse | Measure-Object Length -Sum).Sum / 1MB)
+          # Se oculta el Tesseract del sistema para que las pruebas usen la copia incluida
+          Rename-Item $src "Tesseract-OCR-sistema"
+
+      # ---------- 4) Pruebas ----------
       - name: Probar el ejecutable
         shell: pwsh
         run: |
           python pruebas/crear_pdfs_prueba.py prueba
-          $extra = @()
-          if (-not (Test-Path "C:\Program Files\Tesseract-OCR\tesseract.exe")) {
-            Write-Warning "Tesseract no se instaló: se omite la prueba de OCR"
-            $extra = @("--sin-ocr")
-          }
-          python pruebas/probar_exe.py dist\pdftools\pdftools.exe prueba @extra
+          python pruebas/probar_exe.py dist\pdftools\pdftools.exe prueba --tesseract-incluido
 
-      # ---------- 4) Resultado descargable ----------
+      # ---------- 5) Resultado descargable ----------
       - name: Guardar el programa
         uses: actions/upload-artifact@v7
         with:

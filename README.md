@@ -20,6 +20,8 @@ pdftools escaneo   libro.pdf --modo bn            # solo imágenes: blanco y neg
 - Si no se indica `-o salida.pdf`, el resultado se guarda como `<nombre>_<comando>.pdf`.
   El original nunca se modifica.
 - Ayuda completa: `pdftools -h` y `pdftools <comando> -h`.
+- Desde la propia carpeta del programa: en **PowerShell** escribe `.\pdftools ...`; en **cmd**, `pdftools ...`.
+  El PDF puede estar en cualquier otra carpeta: `.\pdftools comprimir "C:\Libros\libro.pdf"`.
 - Orden recomendado: `extraer` / `cortar` → `escaneo` o `fondo` → `ocr` → `comprimir`.
 
 ## Obtener el ejecutable (compilado por GitHub)
@@ -38,14 +40,13 @@ Cada vez que subas un cambio a `pdftools.py`, se compila una versión nueva.
 
 1. **Antes de descomprimir:** clic derecho en el .zip → Propiedades → marca **Desbloquear** →
    Aceptar. Así Windows no bloquea el programa por venir de internet.
-2. Descomprime la carpeta `pdftools` en un lugar fijo, por ejemplo `C:\Herramientas\pdftools`.
-3. Agrégala al PATH para usarla desde cualquier carpeta: busca en Inicio
+2. Descomprime la carpeta `pdftools` en un lugar fijo, por ejemplo `C:\Herramientas\pdftools`,
+   y ejecuta los comandos desde ahí (o agrégala al PATH, paso 3).
+3. *(Opcional)* Agrégala al PATH para usarla desde cualquier carpeta: busca en Inicio
    *"Editar las variables de entorno de esta cuenta"* → **Path** → Editar → Nuevo →
    `C:\Herramientas\pdftools` → Aceptar. Abre una terminal nueva y prueba `pdftools --version`.
-4. **Para el OCR**, instala Tesseract con el instalador de UB Mannheim
-   (https://github.com/UB-Mannheim/tesseract/wiki). Durante la instalación, en
-   *Additional language data*, marca **Latin**, **Russian** y **Spanish** (inglés viene incluido).
-   No hace falta agregarlo al PATH: pdftools lo busca en `C:\Program Files\Tesseract-OCR`.
+4. **No hace falta instalar nada más**: la carpeta incluye Python, jbig2 y Tesseract (OCR)
+   con los idiomas inglés, español, latín y ruso. `pdftools --version` muestra los componentes.
 
 Si el antivirus o SmartScreen avisan la primera vez, es habitual con programas no firmados
 compilados con PyInstaller; el código fuente completo está en este repositorio.
@@ -57,7 +58,7 @@ compilados con PyInstaller; el código fuente completo está en este repositorio
 | `pdftools.py` | El programa |
 | `pdftools.spec` | Configuración de PyInstaller (qué incluir en el ejecutable) |
 | `requirements.txt` | Versiones de las librerías de Python |
-| `.github/workflows/compilar.yml` | Instrucciones de compilación para GitHub Actions |
+| `.github/workflows/compilar.yml` | Instrucciones de compilación para GitHub Actions. Ahí se eligen los idiomas de Tesseract (`IDIOMAS`) y la variante de modelos (`MODELOS_TESSERACT`: `tessdata_fast` o `tessdata_best`) |
 | `pruebas/` | Pruebas automáticas que se ejecutan después de compilar |
 
 Para usarlo sin compilar (con Python instalado): `pip install -r requirements.txt` y

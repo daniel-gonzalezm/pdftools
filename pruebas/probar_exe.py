@@ -30,7 +30,10 @@ def comprobar(condicion, mensaje):
 
 
 v = correr("--version")
-comprobar("jbig2: sí" in v, "jbig2 incluido en el ejecutable")
+comprobar("jbig2:     sí" in v, "jbig2 incluido en el ejecutable")
+if "--tesseract-incluido" in sys.argv:
+    comprobar("tesseract: incluido" in v, "Tesseract incluido en el ejecutable")
+    comprobar(all(l in v for l in ("eng", "spa", "lat", "rus")), "Tesseract con eng, spa, lat y rus")
 
 correr("extraer", "bn.pdf", "-p", "2-3")
 comprobar(len(pymupdf.open("bn_paginas.pdf")) == 2, "extraer: 2 páginas")
@@ -56,7 +59,7 @@ s = correr("fondo", "bn.pdf", "-o", "no_debe_existir.pdf")
 comprobar(not os.path.isfile("no_debe_existir.pdf"), "fondo: no crea archivo en PDF sin capas")
 
 if not sin_ocr:
-    correr("ocr", "bn.pdf", "-l", "eng")
+    correr("ocr", "bn.pdf", "-l", "eng+spa+lat+rus")
     texto = pymupdf.open("bn_ocr.pdf")[0].get_text().lower() if os.path.isfile("bn_ocr.pdf") else ""
     comprobar("quick" in texto and "fox" in texto, "ocr: texto reconocido")
 
