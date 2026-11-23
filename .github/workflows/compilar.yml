@@ -1,0 +1,95 @@
+# Compila pdftools.exe para Windows y lo deja disponible para descargar.
+# Se ejecuta solo al subir cambios a la rama main, o a mano desde la pestaña "Actions".
+name: Compilar pdftools para Windows
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - name: Descargar el código
+        uses: actions/checkout@v7
+
+      # ---------- 1) jbig2: codificador JBIG2, compilado desde su código fuente ----------
+      - name: Preparar MSYS2 (compilador para jbig2)
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            git
+            make
+            autoconf
+            automake
+            libtool
+            pkg-config
+          pacboy: >-
+            zlib:x
+            leptonica:p
+            gcc:p
+
+      - name: Compilar jbig2
+        shell: msys2 {0}
+        run: |
+          git clone --depth 1 --branch 0.32 https://github.com/agl/jbig2enc.git
+          cd jbig2enc
+          ./autogen.sh
+          ./configure --disable-shared 'CXXFLAGS=-O2 -static'
+          make
+          mkdir -p ../jbig2-win
+          cp src/jbig2.exe ../jbig2-win/
+          # copiar las DLL que necesita (leptonica, libpng, etc.)
+          for dll in $(ldd src/jbig2.exe | awk '/\/ucrt64\// {print $3}'); do cp "$dll" ../jbig2-win/; done
+          ls -la ../jbig2-win
+
+      - name: Probar jbig2 fuera de MSYS2
+        shell: pwsh
+        run: .\jbig2-win\jbig2.exe -V
+
+      # ---------- 2) pdftools.exe ----------
+      - name: Preparar Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      - name: Instalar dependencias
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller==6.22.3
+
+      - name: Compilar pdftools.exe
+        shell: pwsh
+        run: pyinstaller --noconfirm pdftools.spec
+
+      - name: Incluir jbig2 en la carpeta del programa
+        shell: pwsh
+        run: Copy-Item -Recurse jbig2-win dist\pdftools\jbig2
+
+      # ---------- 3) Pruebas ----------
+      - name: Instalar Tesseract (solo para probar el OCR)
+        shell: pwsh
+        continue-on-error: true
+        run: choco install tesseract -y --no-progress
+
+      - name: Probar el ejecutable
+        shell: pwsh
+        run: |
+          python pruebas/crear_pdfs_prueba.py prueba
+          $extra = @()
+          if (-not (Test-Path "C:\Program Files\Tesseract-OCR\tesseract.exe")) {
+            Write-Warning "Tesseract no se instaló: se omite la prueba de OCR"
+            $extra = @("--sin-ocr")
+          }
+          python pruebas/probar_exe.py dist\pdftools\pdftools.exe prueba @extra
+
+      # ---------- 4) Resultado descargable ----------
+      - name: Guardar el programa
+        uses: actions/upload-artifact@v7
+        with:
+          name: pdftools-windows
+          path: dist/pdftools

@@ -1,0 +1,10 @@
+# Archivos generados por Python y PyInstaller
+__pycache__/
+*.pyc
+build/
+dist/
+# Ojo: pdftools.spec NO se ignora; es la configuración de compilación.
+
+# Archivos de prueba y PDF de trabajo
+prueba/
+*.pdf
