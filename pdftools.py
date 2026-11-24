@@ -534,13 +534,17 @@ def tiene_color(im, umbral=0.001):
     H, S, V = b[0::3], b[1::3], b[2::3]                 # 0-255 cada uno
     n = len(H)
     # ¿El papel tiene tinte? Se mira la mitad más clara de la página (el papel).
+    if n == 0:
+        return False
     v_medio = sorted(V)[n // 2]
-    claros = [s_ for s_, v in zip(S, V) if v >= v_medio]
-    papel_tenido = sum(1 for s_ in claros if s_ > 20) > 0.2 * len(claros)
+    claros = [(h, s_) for h, s_, v in zip(H, S, V) if v >= v_medio]
+    papel_tenido = sum(1 for _, s_ in claros if s_ > 20) > 0.2 * len(claros)
     # Si lo tiene, su matiz típico (sepia, amarillento...) no cuenta como color.
     ref = None
     if papel_tenido:
         tinte = sorted(h for h, s_, v in zip(H, S, V) if s_ > 20 and v > 128)
+        if not tinte:   # página oscura (tapa, guarda, poca luz): se usa su parte más clara
+            tinte = sorted(h for h, s_ in claros if s_ > 20)
         ref = tinte[len(tinte) // 2] * 360 / 255
 
     def es_color(h, s_, v):
